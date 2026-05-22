@@ -231,7 +231,6 @@ export function MCPSteps({ variant = "full" }: MCPStepsProps) {
 		return command
 	}
 
-
 	const copyManualSnippet = (text: string) => {
 		navigator.clipboard.writeText(text)
 		analytics.mcpInstallCmdCopied()

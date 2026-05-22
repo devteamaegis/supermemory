@@ -26,7 +26,6 @@ import {
 	ChevronDown,
 	Loader,
 	Search,
-	Sparkles,
 	X,
 	Zap,
 } from "lucide-react"
@@ -34,9 +33,16 @@ import { CHROME_EXTENSION_URL } from "@lib/constants"
 import { analytics } from "@/lib/analytics"
 import Image from "next/image"
 import { useViewMode } from "@/lib/view-mode-context"
-import { type ViewParamValue } from "@/lib/search-params"
+import type { ViewParamValue } from "@/lib/search-params"
 import { parseAsString, parseAsStringEnum, useQueryState } from "nuqs"
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type ReactNode,
+} from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogTitle } from "@ui/components/dialog"
@@ -46,7 +52,6 @@ import {
 	FREE_TIER_PLUGIN_IDS,
 	isFreeTierPlugin,
 	type InstallStep,
-	type PluginInfo,
 } from "@/lib/plugin-catalog"
 import { INSET, InstallSteps, PillButton } from "./integrations/install-steps"
 import { MCPSteps } from "./mcp-modal/mcp-detail-view"
@@ -194,7 +199,9 @@ const SECTION_ORDER: Array<Exclude<CategoryFilter, "all" | "connected">> = [
 	"apps-extensions",
 ]
 
-function itemCategory(item: Item): Exclude<CategoryFilter, "all" | "connected"> {
+function itemCategory(
+	item: Item,
+): Exclude<CategoryFilter, "all" | "connected"> {
 	switch (item.kind) {
 		case "plugin":
 			return "plugins"
@@ -380,9 +387,7 @@ const SECTIONS: Array<{
 				name: "Import X bookmarks",
 				tagline: "Turn your X/Twitter bookmarks into memories",
 				simpleTitle: "Turn your X bookmarks into memory",
-				icon: (
-					<Image src="/onboarding/x.png" alt="X" width={24} height={24} />
-				),
+				icon: <Image src="/onboarding/x.png" alt="X" width={24} height={24} />,
 				viewMode: "import" as ViewParamValue,
 			},
 		],
@@ -577,7 +582,12 @@ function ItemCard({
 			<div className="flex items-start justify-between gap-2">
 				<IconBox>{icon}</IconBox>
 				{docsUrl && (
-					<div onClick={(e) => e.stopPropagation()}>
+					// biome-ignore lint/a11y/noStaticElementInteractions: wrapper to stop event propagation
+					<div
+						role="presentation"
+						onClick={(e) => e.stopPropagation()}
+						onKeyDown={(e) => e.stopPropagation()}
+					>
 						<DocsLink href={docsUrl} />
 					</div>
 				)}
@@ -749,8 +759,8 @@ function FeaturedHero({ picks }: { picks: FeaturedPick[] }) {
 							"text-[13px] leading-snug text-[#A1A1AA]",
 						)}
 					>
-						<span className="font-medium text-[#CBD5E1]">{pick.name}</span>{" "}
-						· {pick.support}
+						<span className="font-medium text-[#CBD5E1]">{pick.name}</span> ·{" "}
+						{pick.support}
 					</p>
 				</motion.div>
 			</AnimatePresence>
@@ -901,12 +911,12 @@ function SectionRail({
 	const [canScrollLeft, setCanScrollLeft] = useState(false)
 	const [canScrollRight, setCanScrollRight] = useState(false)
 
-	const update = () => {
+	const update = useCallback(() => {
 		const el = scrollRef.current
 		if (!el) return
 		setCanScrollLeft(el.scrollLeft > 4)
 		setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4)
-	}
+	}, [])
 
 	useEffect(() => {
 		update()
@@ -921,7 +931,7 @@ function SectionRail({
 			el.removeEventListener("scrollend", update)
 			ro.disconnect()
 		}
-	}, [])
+	}, [update])
 
 	const scrollBy = (dir: 1 | -1) => {
 		scrollRef.current?.scrollBy({ left: 292 * dir, behavior: "smooth" })
@@ -1197,35 +1207,40 @@ export function IntegrationsView() {
 	const allItems = useMemo<Item[]>(
 		() =>
 			SECTIONS.flatMap((s) => s.items(PLUGIN_CATALOG)).filter(
-				(item) =>
-					item.kind !== "plugin" || enabledPluginIds.has(item.pluginId),
+				(item) => item.kind !== "plugin" || enabledPluginIds.has(item.pluginId),
 			),
 		[enabledPluginIds],
 	)
 
-	const isItemConnected = (item: Item): boolean => {
-		if (item.kind === "plugin") {
-			return connectedPlugins.some((k) => k.pluginId === item.pluginId)
-		}
-		if (item.kind === "connector") {
-			return connectionsByProvider[item.provider].length > 0
-		}
-		return false
-	}
+	const isItemConnected = useCallback(
+		(item: Item): boolean => {
+			if (item.kind === "plugin") {
+				return connectedPlugins.some((k) => k.pluginId === item.pluginId)
+			}
+			if (item.kind === "connector") {
+				return connectionsByProvider[item.provider].length > 0
+			}
+			return false
+		},
+		[connectedPlugins, connectionsByProvider],
+	)
 
-	const counts: Record<CategoryFilter, number> = {
-		all: allItems.length,
-		connected: allItems.filter(isItemConnected).length,
-		plugins: allItems.filter((i) => itemCategory(i) === "plugins").length,
-		"knowledge-bases": allItems.filter(
-			(i) => itemCategory(i) === "knowledge-bases",
-		).length,
-		"apps-extensions": allItems.filter(
-			(i) => itemCategory(i) === "apps-extensions",
-		).length,
-		"ai-clients": allItems.filter((i) => itemCategory(i) === "ai-clients")
-			.length,
-	}
+	const counts = useMemo<Record<CategoryFilter, number>>(
+		() => ({
+			all: allItems.length,
+			connected: allItems.filter(isItemConnected).length,
+			plugins: allItems.filter((i) => itemCategory(i) === "plugins").length,
+			"knowledge-bases": allItems.filter(
+				(i) => itemCategory(i) === "knowledge-bases",
+			).length,
+			"apps-extensions": allItems.filter(
+				(i) => itemCategory(i) === "apps-extensions",
+			).length,
+			"ai-clients": allItems.filter((i) => itemCategory(i) === "ai-clients")
+				.length,
+		}),
+		[allItems, isItemConnected],
+	)
 
 	useEffect(() => {
 		if (category !== "all" && counts[category] === 0) {
@@ -1473,7 +1488,9 @@ export function IntegrationsView() {
 		return null
 	}
 
-	const dialogPlugin = newKey.pluginId ? PLUGIN_CATALOG[newKey.pluginId] : undefined
+	const dialogPlugin = newKey.pluginId
+		? PLUGIN_CATALOG[newKey.pluginId]
+		: undefined
 	const pluginSteps = dialogPlugin?.installSteps ?? []
 	const stepsEmbedKey = pluginSteps.some((s) => s.code?.includes("sm_..."))
 	const setupSteps: InstallStep[] = stepsEmbedKey
@@ -1544,10 +1561,7 @@ export function IntegrationsView() {
 								return (
 									<SectionRail key={cat} label={CATEGORY_LABEL[cat]}>
 										{items.map((item) => (
-											<div
-												key={item.id}
-												className="w-[280px] shrink-0"
-											>
+											<div key={item.id} className="w-[280px] shrink-0">
 												{renderItemCard(item)}
 											</div>
 										))}
